@@ -1,14 +1,12 @@
 # SpendSmart – Smart Expense Tracker
 
-SpendSmart is a simple expense tracker project that helps users view and understand their expenses. I am building this project step by step as part of my web development learning.
-
-For Day 1, I created the dashboard layout using HTML, CSS, and JavaScript. The dashboard currently uses sample data to display expenses, budget information, and spending categories.
+SpendSmart is a vanilla HTML, CSS, and JavaScript expense tracker with a responsive dashboard.
 
 ## Technologies Used
 
-- **HTML** – To create the structure of the website.
-- **CSS** – To design the dashboard and make it responsive.
-- **JavaScript** – To display the current date, format amounts, and show sample transactions.
+- **HTML** – Semantic layout, modal form, accessible dialogs
+- **CSS** – Design tokens, Grid/Flex layout, responsive UI
+- **JavaScript** – CRUD, validation, dynamic dashboard calculations
 
 ## Project Structure
 
@@ -23,46 +21,37 @@ spendsmart-expense-tracker/
 └── README.md
 ```
 
-## Features Completed
+## Features
 
-- Dashboard with a sidebar and navigation bar.
-- Cards showing balance, expenses, and budget details.
-- Weekly spending chart using sample data.
-- Recent transactions with categories and amounts.
-- Spending breakdown by category.
-- Currency formatting in Indian Rupees (₹).
-- Current date displayed using JavaScript.
-- Responsive layout for desktop and mobile screens.
+- Dashboard with sidebar, summary cards, weekly chart, and category breakdown
+- **Add, edit, and delete** expenses via a modal form
+- Form validation with inline error messages and toast notifications
+- Dashboard totals, budget progress, categories, and chart recalculate from your expense list
+- INR currency formatting and current date display
+- Responsive layout for desktop and mobile
 
-## How to Run the Project
+**Note:** Data is kept in memory only. Refreshing the page resets expenses to the starter sample set until localStorage is added later.
 
-1. Download or clone this repository.
-2. Open the project folder.
-3. Open `index.html` in your browser.
+## How to Run
 
-You can also run it using Python's local server:
+1. Open the project folder.
+2. Open `index.html` in your browser.
+
+Or use a local server:
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Then open `http://localhost:8080` in your browser.
+Then visit `http://localhost:8080`.
 
-## Future Improvements
+## Planned Next Steps
 
-I plan to add the following features in the next stages:
-
-- Add new expenses.
-- Edit and delete existing expenses.
-- Search, filter, and sort transactions.
-- Save expense data using localStorage.
-- Add a dark and light theme.
-- Add monthly budget alerts and more spending information.
-
-## Project Status
-
-**Day 1 completed:** The dashboard layout and sample data display are ready. Expense management and data storage will be implemented in the upcoming stages.
+- localStorage persistence
+- Search, filter, and sort
+- Additional pages (All Expenses, Reports)
+- Budget alerts and themes
 
 ## Purpose
 
-This project is part of my web development practice. It helps me improve my understanding of HTML, CSS, JavaScript, DOM manipulation, and responsive web design.
+Educational project for learning DOM manipulation, form handling, and responsive UI design.
