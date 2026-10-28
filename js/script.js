@@ -230,36 +230,221 @@
     });
   }
 
-  function calculateTotals(refDate) {
-    const now = refDate || new Date();
-    const monthly = expenses.filter(function (e) {
-      return isSameMonth(e.date, now);
+  function populateMonthFilter() {
+    const select = document.getElementById("filterMonth");
+    if (!select) return;
+
+    const previousValue = select.value || "all";
+    const monthSet = new Set();
+    const currentMonthKey = todayISO().slice(0, 7);
+    monthSet.add(currentMonthKey);
+
+    expenses.forEach(function (e) {
+      if (e.date && e.date.length >= 7) {
+        monthSet.add(e.date.slice(0, 7));
+      }
     });
+
+    const sortedMonths = Array.from(monthSet).sort().reverse();
+    select.replaceChildren();
+
+    const allOption = document.createElement("option");
+    allOption.value = "all";
+    allOption.textContent = "All Months";
+    select.appendChild(allOption);
+
+    sortedMonths.forEach(function (mKey) {
+      const parts = mKey.split("-");
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const d = new Date(year, month - 1, 1, 12, 0, 0);
+      const label = new Intl.DateTimeFormat("en-IN", {
+        month: "long",
+        year: "numeric",
+      }).format(d);
+
+      const opt = document.createElement("option");
+      opt.value = mKey;
+      opt.textContent = label + (mKey === currentMonthKey ? " (Current)" : "");
+      select.appendChild(opt);
+    });
+
+    const hasPrevious =
+      sortedMonths.indexOf(previousValue) !== -1 || previousValue === "all";
+    select.value = hasPrevious ? previousValue : "all";
+  }
+
+  function getActiveFilters() {
+    const searchInput = document.getElementById("expenseSearch");
+    const categorySelect = document.getElementById("filterCategory");
+    const monthSelect = document.getElementById("filterMonth");
+    const sortSelect = document.getElementById("filterSort");
+
+    return {
+      search: searchInput ? searchInput.value.trim().toLowerCase() : "",
+      category:
+        categorySelect && categorySelect.value
+          ? categorySelect.value
+          : "all",
+      month:
+        monthSelect && monthSelect.value
+          ? monthSelect.value
+          : "all",
+      sort:
+        sortSelect && sortSelect.value
+          ? sortSelect.value
+          : "newest",
+    };
+  }
+
+  function getFilteredExpenses(filters) {
+    const f = filters || getActiveFilters();
+    return expenses.filter(function (expense) {
+      if (f.search) {
+        const titleLower = expense.title.toLowerCase();
+        if (!titleLower.includes(f.search)) {
+          return false;
+        }
+      }
+
+      if (f.category && f.category !== "all") {
+        if (expense.category !== f.category) {
+          return false;
+        }
+      }
+
+      if (f.month && f.month !== "all") {
+        const expenseMonth = expense.date.slice(0, 7);
+        if (expenseMonth !== f.month) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }
+
+  function getSortedExpenses(expenseList, sortKey) {
+    const sort =
+      sortKey ||
+      (document.getElementById("filterSort")
+        ? document.getElementById("filterSort").value
+        : "newest");
+    const copy = expenseList.slice();
+
+    copy.sort(function (a, b) {
+      if (sort === "newest") {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.amount - a.amount;
+      }
+      if (sort === "oldest") {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return b.amount - a.amount;
+      }
+      if (sort === "amount-desc") {
+        if (b.amount !== a.amount) return b.amount - a.amount;
+        return b.date.localeCompare(a.date);
+      }
+      if (sort === "amount-asc") {
+        if (a.amount !== b.amount) return a.amount - b.amount;
+        return b.date.localeCompare(a.date);
+      }
+      if (sort === "title-asc") {
+        const cmp = a.title.localeCompare(b.title, undefined, {
+          sensitivity: "base",
+        });
+        if (cmp !== 0) return cmp;
+        return b.date.localeCompare(a.date);
+      }
+      if (sort === "title-desc") {
+        const cmp = b.title.localeCompare(a.title, undefined, {
+          sensitivity: "base",
+        });
+        if (cmp !== 0) return cmp;
+        return b.date.localeCompare(a.date);
+      }
+      return 0;
+    });
+
+    return copy;
+  }
+
+  function calculateTotals(refDate, selectedMonth) {
+    const now = refDate || new Date();
+    const currentMonthKey = todayISO().slice(0, 7);
+    const isAllMonths = !selectedMonth || selectedMonth === "all";
+    const targetMonthKey = isAllMonths ? currentMonthKey : selectedMonth;
+
+    const monthly = expenses.filter(function (e) {
+      return e.date.slice(0, 7) === targetMonthKey;
+    });
+
+    const allTimeTotal = expenses.reduce(function (sum, e) {
+      return sum + e.amount;
+    }, 0);
 
     const monthlyTotal = monthly.reduce(function (sum, e) {
       return sum + e.amount;
     }, 0);
 
     const remaining = MONTHLY_BUDGET - monthlyTotal;
+    const isOverBudget = monthlyTotal > MONTHLY_BUDGET;
+    const overBudgetAmount = isOverBudget ? monthlyTotal - MONTHLY_BUDGET : 0;
     const percentSpent =
       MONTHLY_BUDGET > 0 ? (monthlyTotal / MONTHLY_BUDGET) * 100 : 0;
     const percentLeft = Math.max(0, 100 - percentSpent);
 
+    const parts = targetMonthKey.split("-");
+    const targetYear = parseInt(parts[0], 10);
+    const targetMonthNum = parseInt(parts[1], 10);
+    const targetMonthDate = new Date(targetYear, targetMonthNum - 1, 1, 12, 0, 0);
+    const monthLabel = new Intl.DateTimeFormat("en-IN", {
+      month: "long",
+      year: "numeric",
+    }).format(targetMonthDate);
+
+    const categorySource = isAllMonths ? expenses : monthly;
+    const categoryTotal = isAllMonths ? allTimeTotal : monthlyTotal;
     const byCategory = {};
-    monthly.forEach(function (e) {
+    categorySource.forEach(function (e) {
       byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
     });
 
     const categoryRows = Object.keys(byCategory)
       .map(function (name) {
-        return { name, amount: byCategory[name] };
+        return {
+          name: name,
+          amount: byCategory[name],
+          percent:
+            categoryTotal > 0
+              ? (byCategory[name] / categoryTotal) * 100
+              : 0,
+        };
       })
       .sort(function (a, b) {
         return b.amount - a.amount;
       });
 
-    const weekDays = getWeekRange(now);
-    const weekly = weekDays.map(function (day) {
+    const chartExpenses = isAllMonths ? expenses : monthly;
+    const currentWeekDays = getWeekRange(now);
+    const hasCurrentWeekExpense = currentWeekDays.some(function (d) {
+      return chartExpenses.some(function (e) {
+        return e.date === d.iso;
+      });
+    });
+
+    let chosenWeekDays = currentWeekDays;
+    let isCurrentWeek = true;
+
+    if (!hasCurrentWeekExpense && chartExpenses.length > 0) {
+      const sortedByDate = chartExpenses.slice().sort(function (a, b) {
+        return b.date.localeCompare(a.date);
+      });
+      chosenWeekDays = getWeekRange(parseISODateLocal(sortedByDate[0].date));
+      isCurrentWeek = false;
+    }
+
+    const weekly = chosenWeekDays.map(function (day) {
       const amount = expenses
         .filter(function (e) {
           return e.date === day.iso;
@@ -267,17 +452,32 @@
         .reduce(function (sum, e) {
           return sum + e.amount;
         }, 0);
-      return { day: day.label, amount: amount };
+      return { day: day.label, iso: day.iso, amount: amount };
     });
 
+    const weekSubtitle = isCurrentWeek
+      ? "This week — daily totals"
+      : formatDisplayDate(chosenWeekDays[0].iso) +
+        " – " +
+        formatDisplayDate(chosenWeekDays[6].iso) +
+        " — daily totals";
+
     return {
-      monthlyTotal,
-      remaining,
-      percentSpent,
-      percentLeft,
-      categoryRows,
-      weekly,
-      monthLabel: getMonthLabel(now),
+      isAllMonths: isAllMonths,
+      allTimeTotal: allTimeTotal,
+      monthlyTotal: monthlyTotal,
+      remaining: remaining,
+      isOverBudget: isOverBudget,
+      overBudgetAmount: overBudgetAmount,
+      percentSpent: percentSpent,
+      percentLeft: percentLeft,
+      categoryRows: categoryRows,
+      categoryTotal: categoryTotal,
+      weekly: weekly,
+      weekSubtitle: weekSubtitle,
+      monthLabel: monthLabel,
+      monthExpenseCount: monthly.length,
+      allTimeExpenseCount: expenses.length,
     };
   }
 
@@ -308,6 +508,8 @@
     editBtn.className = "btn-icon-text";
     editBtn.dataset.action = "edit";
     editBtn.dataset.expenseId = expenseId;
+    editBtn.setAttribute("data-action", "edit");
+    editBtn.setAttribute("data-expense-id", expenseId);
     editBtn.textContent = "Edit";
 
     const deleteBtn = document.createElement("button");
@@ -315,6 +517,8 @@
     deleteBtn.className = "btn-icon-text btn-icon-text--danger";
     deleteBtn.dataset.action = "delete";
     deleteBtn.dataset.expenseId = expenseId;
+    deleteBtn.setAttribute("data-action", "delete");
+    deleteBtn.setAttribute("data-expense-id", expenseId);
     deleteBtn.textContent = "Delete";
 
     wrap.appendChild(editBtn);
@@ -419,27 +623,106 @@
     const tbody = document.getElementById("transactionsBody");
     const list = document.getElementById("transactionsList");
     const empty = document.getElementById("emptyTransactions");
+    const emptyTitle = document.getElementById("emptyTransactionsTitle");
+    const emptyText = document.getElementById("emptyTransactionsText");
+    const emptyAddBtn = document.getElementById("emptyAddExpenseBtn");
+    const emptyClearBtn = document.getElementById("emptyClearFiltersBtn");
     const tableWrap = document.getElementById("transactionsTableWrap");
+    const resultCountEl = document.getElementById("expenseResultCount");
+    const subtitleEl = document.getElementById("transactionsSubtitle");
     if (!tbody || !list || !empty) return;
 
-    const sorted = expenses.slice().sort(function (a, b) {
-      if (a.date === b.date) return b.amount - a.amount;
-      return a.date < b.date ? 1 : -1;
-    });
+    const filters = getActiveFilters();
+    const filtered = getFilteredExpenses(filters);
+    const sorted = getSortedExpenses(filtered, filters.sort);
+
+    const isFiltered = Boolean(
+      filters.search ||
+      (filters.category && filters.category !== "all") ||
+      (filters.month && filters.month !== "all")
+    );
 
     tbody.replaceChildren();
     list.replaceChildren();
 
-    if (sorted.length === 0) {
+    if (expenses.length === 0) {
       empty.hidden = false;
+      if (emptyTitle) emptyTitle.textContent = "No transactions yet";
+      if (emptyText) {
+        emptyText.textContent = "Add your first expense to see it listed here.";
+      }
+      if (emptyAddBtn) emptyAddBtn.hidden = false;
+      if (emptyClearBtn) emptyClearBtn.hidden = true;
       if (tableWrap) tableWrap.hidden = true;
       list.hidden = true;
+      if (resultCountEl) resultCountEl.textContent = "No expenses recorded";
+      if (subtitleEl) subtitleEl.textContent = "Your latest expenses";
+      return;
+    }
+
+    if (sorted.length === 0) {
+      empty.hidden = false;
+      if (emptyTitle) emptyTitle.textContent = "No matching expenses";
+      if (emptyText) {
+        if (filters.search && filters.category !== "all" && filters.month !== "all") {
+          emptyText.textContent =
+            'No expenses match "' +
+            filters.search +
+            '" in ' +
+            filters.category +
+            " for this month.";
+        } else if (filters.search) {
+          emptyText.textContent =
+            'No expenses match "' +
+            filters.search +
+            '". Try a different search query or clear filters.';
+        } else if (filters.category !== "all" && filters.month !== "all") {
+          emptyText.textContent =
+            "No expenses found for this category and month.";
+        } else if (filters.category !== "all") {
+          emptyText.textContent =
+            'No expenses found in category "' + filters.category + '".';
+        } else if (filters.month !== "all") {
+          emptyText.textContent = "No expenses found for this month.";
+        } else {
+          emptyText.textContent = "No expenses match your active filters.";
+        }
+      }
+      if (emptyAddBtn) emptyAddBtn.hidden = false;
+      if (emptyClearBtn) emptyClearBtn.hidden = false;
+      if (tableWrap) tableWrap.hidden = true;
+      list.hidden = true;
+      if (resultCountEl) {
+        resultCountEl.textContent =
+          "0 of " + expenses.length + " expenses match filters";
+      }
+      if (subtitleEl) {
+        subtitleEl.textContent = "Filtered results (0 found)";
+      }
       return;
     }
 
     empty.hidden = true;
     if (tableWrap) tableWrap.hidden = false;
     list.hidden = false;
+
+    if (resultCountEl) {
+      if (isFiltered) {
+        resultCountEl.textContent =
+          "Showing " + sorted.length + " of " + expenses.length + " expenses";
+      } else {
+        resultCountEl.textContent =
+          "Showing all " + expenses.length + " expenses";
+      }
+    }
+
+    if (subtitleEl) {
+      if (isFiltered) {
+        subtitleEl.textContent = "Filtered view (" + sorted.length + " found)";
+      } else {
+        subtitleEl.textContent = "Your latest expenses";
+      }
+    }
 
     sorted.forEach(function (expense) {
       tbody.appendChild(buildTableRow(expense));
@@ -449,20 +732,29 @@
 
   function renderCategories(totals) {
     const container = document.getElementById("categoryList");
+    const subtitle = document.getElementById("categorySubtitle");
     if (!container) return;
+
+    if (subtitle) {
+      subtitle.textContent = totals.isAllMonths
+        ? "Share of all-time expenses"
+        : "Share of " + totals.monthLabel + " expenses";
+    }
 
     container.replaceChildren();
 
-    if (totals.monthlyTotal === 0 || totals.categoryRows.length === 0) {
+    if (totals.categoryRows.length === 0 || totals.categoryTotal === 0) {
       const empty = document.createElement("p");
       empty.className = "category-empty";
-      empty.textContent = "No spending recorded for this month yet.";
+      empty.textContent = totals.isAllMonths
+        ? "No spending recorded yet."
+        : "No spending recorded for " + totals.monthLabel + " yet.";
       container.appendChild(empty);
       return;
     }
 
     totals.categoryRows.forEach(function (cat) {
-      const pct = ((cat.amount / totals.monthlyTotal) * 100).toFixed(1);
+      const pct = cat.percent.toFixed(1);
       const color = categoryColors[cat.name] || categoryColors.Other;
 
       const li = document.createElement("li");
@@ -500,7 +792,12 @@
 
   function renderWeeklyChart(totals) {
     const chart = document.getElementById("weeklyChart");
+    const chartSubtitle = document.getElementById("chartSubtitle");
     if (!chart) return;
+
+    if (chartSubtitle && totals.weekSubtitle) {
+      chartSubtitle.textContent = totals.weekSubtitle;
+    }
 
     chart.replaceChildren();
     const maxAmount = Math.max(
@@ -511,7 +808,7 @@
     );
 
     totals.weekly.forEach(function (day) {
-      const heightPct = maxAmount ? (day.amount / maxAmount) * 100 : 0;
+      const heightPct = maxAmount > 0 ? (day.amount / maxAmount) * 100 : 0;
 
       const item = document.createElement("div");
       item.className = "bar-chart__item";
@@ -549,15 +846,61 @@
     const budgetHint = document.getElementById("summaryBudgetMonthHint");
 
     if (balanceEl) balanceEl.textContent = formatINR(SAMPLE_WALLET_BALANCE);
-    if (monthlyEl) monthlyEl.textContent = formatINR(totals.monthlyTotal);
-    if (budgetEl) budgetEl.textContent = formatINR(MONTHLY_BUDGET);
-    if (remainingEl) remainingEl.textContent = formatINR(totals.remaining);
-    if (remainingHint) {
-      remainingHint.textContent =
-        totals.percentLeft.toFixed(2) + "% of budget left";
+
+    if (monthlyEl) {
+      if (totals.isAllMonths) {
+        monthlyEl.textContent = formatINR(totals.allTimeTotal);
+      } else {
+        monthlyEl.textContent = formatINR(totals.monthlyTotal);
+      }
     }
+
+    const expenseCard = monthlyEl ? monthlyEl.closest(".summary-card") : null;
+    const expenseHint = expenseCard ? expenseCard.querySelector(".summary-card__hint") : null;
+    if (expenseHint) {
+      if (totals.isAllMonths) {
+        expenseHint.textContent =
+          "All time · " +
+          totals.allTimeExpenseCount +
+          " transaction" +
+          (totals.allTimeExpenseCount === 1 ? "" : "s");
+      } else {
+        expenseHint.textContent =
+          totals.monthLabel +
+          " · " +
+          totals.monthExpenseCount +
+          " transaction" +
+          (totals.monthExpenseCount === 1 ? "" : "s");
+      }
+    }
+
+    if (budgetEl) budgetEl.textContent = formatINR(MONTHLY_BUDGET);
     if (budgetHint) {
       budgetHint.textContent = totals.monthLabel.split(" ")[0] + " limit";
+    }
+
+    if (remainingEl) {
+      if (totals.isOverBudget) {
+        remainingEl.textContent = "-" + formatINR(totals.overBudgetAmount);
+        remainingEl.classList.add("summary-card__amount--over");
+      } else {
+        remainingEl.textContent = formatINR(totals.remaining);
+        remainingEl.classList.remove("summary-card__amount--over");
+      }
+    }
+
+    if (remainingHint) {
+      if (totals.isOverBudget) {
+        remainingHint.textContent =
+          "Over budget by " +
+          formatINR(totals.overBudgetAmount) +
+          " (" +
+          totals.percentSpent.toFixed(1) +
+          "% spent)";
+      } else {
+        remainingHint.textContent =
+          totals.percentLeft.toFixed(1) + "% of budget left";
+      }
     }
   }
 
@@ -571,13 +914,27 @@
     const progressBar = document.getElementById("budgetProgressBar");
     const progressFill = document.getElementById("budgetProgressFill");
     const messageAmount = document.getElementById("budgetMessageAmount");
+    const budgetMessage = document.getElementById("budgetMessage");
 
-    if (monthLabel) monthLabel.textContent = totals.monthLabel;
+    if (monthLabel) {
+      monthLabel.textContent = totals.isAllMonths
+        ? totals.monthLabel + " (Current Month)"
+        : totals.monthLabel;
+    }
     if (limitEl) limitEl.textContent = formatINR(MONTHLY_BUDGET);
     if (spentEl) spentEl.textContent = formatINR(totals.monthlyTotal);
-    if (remainingEl) remainingEl.textContent = formatINR(totals.remaining);
 
-    const pctDisplay = totals.percentSpent.toFixed(2);
+    if (remainingEl) {
+      if (totals.isOverBudget) {
+        remainingEl.textContent = "-" + formatINR(totals.overBudgetAmount);
+        remainingEl.classList.add("summary-card__amount--over");
+      } else {
+        remainingEl.textContent = formatINR(totals.remaining);
+        remainingEl.classList.remove("summary-card__amount--over");
+      }
+    }
+
+    const pctDisplay = totals.percentSpent.toFixed(1);
     if (progressLabel) progressLabel.textContent = pctDisplay + "% spent";
 
     const status = getBudgetStatus(totals.percentSpent);
@@ -587,11 +944,32 @@
     }
 
     const barWidth = Math.min(100, totals.percentSpent);
-    if (progressFill) progressFill.style.width = barWidth + "%";
+    if (progressFill) {
+      progressFill.style.width = barWidth + "%";
+      if (totals.isOverBudget) {
+        progressFill.classList.add("progress-bar__fill--over");
+      } else {
+        progressFill.classList.remove("progress-bar__fill--over");
+      }
+    }
+
     if (progressBar) {
       progressBar.setAttribute("aria-valuenow", pctDisplay);
     }
-    if (messageAmount) messageAmount.textContent = formatINR(totals.remaining);
+
+    if (budgetMessage) {
+      if (totals.isOverBudget) {
+        budgetMessage.innerHTML =
+          'You are <strong id="budgetMessageAmount">' +
+          formatINR(totals.overBudgetAmount) +
+          "</strong> over your monthly budget.";
+      } else {
+        budgetMessage.innerHTML =
+          'You have <strong id="budgetMessageAmount">' +
+          formatINR(totals.remaining) +
+          "</strong> left for the rest of the month.";
+      }
+    }
   }
 
   function renderCurrentDate() {
@@ -608,13 +986,15 @@
   }
 
   function render() {
-    const totals = calculateTotals(new Date());
+    const monthSelect = document.getElementById("filterMonth");
+    const selectedMonth = monthSelect ? monthSelect.value : "all";
+    const totals = calculateTotals(new Date(), selectedMonth);
     renderCurrentDate();
     renderSummary(totals);
     renderBudgetCard(totals);
-    renderExpenses();
     renderCategories(totals);
     renderWeeklyChart(totals);
+    renderExpenses();
   }
 
   function readFormData() {
@@ -894,6 +1274,7 @@
     if (editingExpenseId) {
       const updated = updateExpense(editingExpenseId, result.data);
       if (updated) {
+        populateMonthFilter();
         render();
         closeExpenseModal();
         showToast("Expense updated successfully.");
@@ -902,6 +1283,7 @@
       }
     } else {
       addExpense(result.data);
+      populateMonthFilter();
       render();
       closeExpenseModal();
       showToast("Expense added successfully.");
@@ -958,6 +1340,70 @@
     });
   }
 
+  function initExpenseFilters() {
+    const searchInput = document.getElementById("expenseSearch");
+    const clearSearchBtn = document.getElementById("clearSearchBtn");
+    const categorySelect = document.getElementById("filterCategory");
+    const monthSelect = document.getElementById("filterMonth");
+    const sortSelect = document.getElementById("filterSort");
+    const clearFiltersBtn = document.getElementById("clearFiltersBtn");
+    const emptyClearFiltersBtn = document.getElementById("emptyClearFiltersBtn");
+
+    if (searchInput) {
+      searchInput.addEventListener("input", function () {
+        if (clearSearchBtn) {
+          clearSearchBtn.hidden = searchInput.value.trim().length === 0;
+        }
+        renderExpenses();
+      });
+    }
+
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener("click", function () {
+        if (searchInput) {
+          searchInput.value = "";
+          clearSearchBtn.hidden = true;
+          searchInput.focus();
+        }
+        renderExpenses();
+      });
+    }
+
+    if (categorySelect) {
+      categorySelect.addEventListener("change", function () {
+        renderExpenses();
+      });
+    }
+
+    if (monthSelect) {
+      monthSelect.addEventListener("change", function () {
+        render();
+      });
+    }
+
+    if (sortSelect) {
+      sortSelect.addEventListener("change", function () {
+        renderExpenses();
+      });
+    }
+
+    function clearAllFilters() {
+      if (searchInput) searchInput.value = "";
+      if (clearSearchBtn) clearSearchBtn.hidden = true;
+      if (categorySelect) categorySelect.value = "all";
+      if (monthSelect) monthSelect.value = "all";
+      render();
+      showToast("Filters reset.");
+    }
+
+    if (clearFiltersBtn) {
+      clearFiltersBtn.addEventListener("click", clearAllFilters);
+    }
+    if (emptyClearFiltersBtn) {
+      emptyClearFiltersBtn.addEventListener("click", clearAllFilters);
+    }
+  }
+
   function initTransactionActions() {
     function handleActionClick(event) {
       const target = event.target;
@@ -965,8 +1411,8 @@
       const button = target.closest("[data-action]");
       if (!button) return;
 
-      const action = button.getAttribute("data-action");
-      const id = button.getAttribute("data-expense-id");
+      const action = button.getAttribute("data-action") || button.dataset.action;
+      const id = button.getAttribute("data-expense-id") || button.dataset.expenseId;
       if (!id) return;
 
       if (action === "edit") {
@@ -1006,6 +1452,7 @@
       deleteBtn.addEventListener("click", function () {
         if (!pendingDeleteId) return;
         deleteExpense(pendingDeleteId);
+        populateMonthFilter();
         closeConfirmDialog();
         render();
         showToast("Expense deleted.");
@@ -1085,9 +1532,11 @@
   }
 
   function init() {
+    populateMonthFilter();
     render();
     initSidebar();
     initExpenseForm();
+    initExpenseFilters();
     initTransactionActions();
     initConfirmDialog();
     initGlobalKeys();

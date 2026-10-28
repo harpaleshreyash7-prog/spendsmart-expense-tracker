@@ -24,13 +24,17 @@ spendsmart-expense-tracker/
 ## Features
 
 - Dashboard with sidebar, summary cards, weekly chart, and category breakdown
-- **Add, edit, and delete** expenses via a modal form
-- Form validation with inline error messages and toast notifications
-- Dashboard totals, budget progress, categories, and chart recalculate from your expense list
+- **Add, edit, and delete** expenses via an accessible modal form with validation
+- **Real-time search** by expense title with clear button and live result count
+- **Multi-filter pipeline**: combine title search, category filter, and month filter seamlessly
+- **Multi-criteria sorting**: Newest First, Oldest First, Amount (High/Low), and Title (A-Z / Z-A)
+- Contextual **empty states** with clear filters actions
+- Dashboard totals, budget progress, categories, and weekly chart recalculate accurately from expense data
+- Budget overspending detection with visual indicators and clear progress warnings
 - INR currency formatting and current date display
-- Responsive layout for desktop and mobile
+- Responsive layout with mobile-friendly table and list views
 
-**Note:** Data is kept in memory only. Refreshing the page resets expenses to the starter sample set until localStorage is added later.
+**Note:** Data is currently kept in memory. Refreshing the page resets expenses to the starter sample set until localStorage is added.
 
 ## How to Run
 
@@ -48,9 +52,10 @@ Then visit `http://localhost:8080`.
 ## Planned Next Steps
 
 - localStorage persistence
-- Search, filter, and sort
 - Additional pages (All Expenses, Reports)
-- Budget alerts and themes
+- Custom monthly budget settings & budget alerts
+- Dark mode theme toggle
+- CSV / JSON export and import
 
 ## Purpose
 
