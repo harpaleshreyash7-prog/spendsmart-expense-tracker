@@ -53,6 +53,28 @@
   --transition: 180ms ease;
 }
 
+[data-theme="dark"] {
+  --color-bg: #0b0f19;
+  --color-surface: #111827;
+  --color-text: #f9fafb;
+  --color-text-muted: #9ca3af;
+  --color-text-subtle: #6b7280;
+  --color-border: #1f2937;
+  --color-border-strong: #374151;
+
+  --color-accent: #10b981;
+  --color-accent-hover: #059669;
+  --color-accent-soft: rgba(16, 185, 129, 0.15);
+  --color-accent-muted: #065f46;
+
+  --color-danger-soft: rgba(239, 68, 68, 0.15);
+  --color-warning-soft: rgba(245, 158, 11, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.7);
+}
+
 *,
 *::before,
 *::after {
@@ -852,12 +874,201 @@ ul {
   justify-content: center;
 }
 
+.progress-bar__fill--warn {
+  background: #d97706;
+}
+
 .progress-bar__fill--over {
   background: #dc2626;
 }
 
 .summary-card__amount--over {
   color: #dc2626;
+}
+
+.progress-meta__status--ok {
+  color: var(--color-accent);
+}
+
+.progress-meta__status--warn {
+  color: #d97706;
+}
+
+.progress-meta__status--danger {
+  color: #dc2626;
+}
+
+/* Theme Toggle Button */
+
+.theme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-toggle:hover svg {
+  transform: rotate(15deg);
+}
+
+.theme-icon {
+  width: 20px;
+  height: 20px;
+  transition: transform var(--transition);
+}
+
+/* Monthly Budget Editor */
+
+.budget-editor {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.budget-editor__header {
+  margin-bottom: var(--space-2);
+}
+
+.budget-editor__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.budget-editor__label span {
+  color: var(--color-text);
+}
+
+.budget-editor__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.budget-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.budget-currency-symbol {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-subtle);
+  pointer-events: none;
+}
+
+.budget-input {
+  width: 100%;
+  padding-left: 2rem;
+  min-height: 40px;
+}
+
+.budget-error {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  color: #dc2626;
+  min-height: 1.125rem;
+}
+
+[data-theme="dark"] .budget-error {
+  color: #f87171;
+}
+
+.budget-message--over {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .budget-message--over {
+  color: #f87171;
+}
+
+@media (max-width: 480px) {
+  .budget-editor__controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .budget-editor__controls .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Dark Theme Specific Overrides */
+
+[data-theme="dark"] .field__select {
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-text-subtle) 50%),
+    linear-gradient(135deg, var(--color-text-subtle) 50%, transparent 50%);
+}
+
+[data-theme="dark"] .summary-card__icon--budget {
+  background: rgba(37, 99, 235, 0.2);
+  color: #60a5fa;
+}
+
+[data-theme="dark"] .summary-card__icon--expense {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+[data-theme="dark"] .summary-card__icon--remaining {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+[data-theme="dark"] .progress-meta__status--warn {
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .progress-meta__status--danger {
+  color: #f87171;
+}
+
+[data-theme="dark"] .progress-bar__fill--warn {
+  background: #f59e0b;
+}
+
+[data-theme="dark"] .progress-bar__fill--over {
+  background: #ef4444;
+}
+
+[data-theme="dark"] .summary-card__amount--over {
+  color: #f87171;
+}
+
+[data-theme="dark"] .sidebar-backdrop,
+[data-theme="dark"] .modal-backdrop {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .btn--secondary {
+  background: #1f2937;
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .btn--secondary:hover {
+  background: #374151;
+}
+
+[data-theme="dark"] .btn-icon-text {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .btn-icon-text:hover {
+  background: #1f2937;
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .btn-icon-text--danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
 }
 
 /* Transactions table */

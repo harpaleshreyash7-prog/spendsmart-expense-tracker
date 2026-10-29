@@ -1,14 +1,24 @@
 /**
- * SpendSmart — Expense CRUD & dashboard
- * Single source of truth: expenses[]
+ * SpendSmart — Expense CRUD, Dashboard, and LocalStorage Persistence
+ * Single source of truth: expenses[] and monthlyBudget
  */
 
 (function () {
   "use strict";
 
-  const MONTHLY_BUDGET = 20000;
+  const DEFAULT_MONTHLY_BUDGET = 20000;
   /** Illustrative wallet figure — not calculated from expenses */
   const SAMPLE_WALLET_BALANCE = 24850;
+
+  const STORAGE_KEYS = {
+    EXPENSES: "spendsmart_expenses",
+    BUDGET: "spendsmart_budget",
+    THEME: "spendsmart_theme",
+  };
+
+  const LEGACY_STORAGE_KEYS = {
+    BUDGET: "spendsmart_monthly_budget",
+  };
 
   const CATEGORIES = [
     "Food",
@@ -29,20 +39,6 @@
     "Net Banking",
     "Other",
   ];
-
-  const inrFormatter = new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  });
-
-  /** @type {Array<{id:string,title:string,amount:number,category:string,date:string,paymentMethod:string,notes:string}>} */
-  let expenses = createInitialExpenses();
-
-  let editingExpenseId = null;
-  let pendingDeleteId = null;
-  let isSubmitting = false;
-  let lastFocusedBeforeModal = null;
 
   const categoryIconSvg = {
     Food: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><path d="M6 1v3M10 1v3M14 1v3"/></svg>',
@@ -72,6 +68,12 @@
     Health: "var(--category-health)",
     Other: "var(--category-other)",
   };
+
+  const inrFormatter = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  });
 
   function generateId() {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -230,6 +232,192 @@
     });
   }
 
+  /**
+   * Safely sanitize and validate a raw expense object.
+   * Returns a valid expense or null if completely unrecoverable.
+   */
+  function sanitizeExpense(raw) {
+    if (!raw || typeof raw !== "object") return null;
+
+    const id =
+      typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : generateId();
+
+    const title =
+      typeof raw.title === "string" && raw.title.trim()
+        ? raw.title.trim()
+        : "Untitled Expense";
+
+    const parsedAmount =
+      typeof raw.amount === "number" && Number.isFinite(raw.amount) && raw.amount > 0
+        ? Math.round(raw.amount * 100) / 100
+        : parseFloat(raw.amount);
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return null;
+
+    const category =
+      typeof raw.category === "string" && CATEGORIES.indexOf(raw.category) !== -1
+        ? raw.category
+        : "Other";
+
+    let date = typeof raw.date === "string" ? raw.date.trim() : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      date = todayISO();
+    } else {
+      const parsedDate = parseISODateLocal(date);
+      if (Number.isNaN(parsedDate.getTime())) {
+        date = todayISO();
+      }
+    }
+
+    const paymentMethod =
+      typeof raw.paymentMethod === "string" &&
+      PAYMENT_METHODS.indexOf(raw.paymentMethod) !== -1
+        ? raw.paymentMethod
+        : "Other";
+
+    const notes = typeof raw.notes === "string" ? raw.notes.trim() : "";
+
+    return {
+      id: id,
+      title: title,
+      amount: parsedAmount,
+      category: category,
+      date: date,
+      paymentMethod: paymentMethod,
+      notes: notes,
+    };
+  }
+
+  /**
+   * Loads saved expenses from localStorage with validation and corruption recovery.
+   */
+  function loadExpensesFromStorage() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.EXPENSES);
+      if (raw === null) {
+        const initial = createInitialExpenses();
+        try {
+          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(initial));
+        } catch (e) {
+          console.warn("SpendSmart: Could not seed localStorage:", e);
+        }
+        return initial;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        console.warn(
+          "SpendSmart: Corrupted expenses data (not an array). Reverting to seed data."
+        );
+        const fallback = createInitialExpenses();
+        saveExpensesToStorage(fallback);
+        return fallback;
+      }
+
+      if (parsed.length === 0) {
+        return [];
+      }
+
+      const validList = [];
+      for (let i = 0; i < parsed.length; i++) {
+        const item = sanitizeExpense(parsed[i]);
+        if (item) {
+          validList.push(item);
+        }
+      }
+
+      if (validList.length === 0 && parsed.length > 0) {
+        console.warn(
+          "SpendSmart: All stored expenses were corrupted. Reverting to seed data."
+        );
+        const fallback = createInitialExpenses();
+        saveExpensesToStorage(fallback);
+        return fallback;
+      }
+
+      return validList;
+    } catch (err) {
+      console.warn("SpendSmart: Failed to parse expenses from localStorage:", err);
+      const fallback = createInitialExpenses();
+      saveExpensesToStorage(fallback);
+      return fallback;
+    }
+  }
+
+  /**
+   * Persists expenses array to localStorage with JSON.stringify() and error catching.
+   */
+  function saveExpensesToStorage(customList) {
+    const target = customList !== undefined ? customList : expenses;
+    try {
+      localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(target));
+    } catch (err) {
+      console.error("SpendSmart: Failed to save expenses to localStorage:", err);
+      showToast("Unable to save expense changes to local storage.", "error");
+    }
+  }
+
+  /**
+   * Loads saved monthly budget from localStorage safely with JSON.parse().
+   */
+  function loadBudgetFromStorage() {
+    try {
+      const raw =
+        localStorage.getItem(STORAGE_KEYS.BUDGET) ||
+        localStorage.getItem(LEGACY_STORAGE_KEYS.BUDGET);
+
+      if (raw === null) {
+        return DEFAULT_MONTHLY_BUDGET;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0) {
+        return Math.round(parsed * 100) / 100;
+      }
+
+      if (parsed && typeof parsed === "object") {
+        const candidate = Number(
+          parsed.budget || parsed.amount || parsed.monthlyBudget
+        );
+        if (Number.isFinite(candidate) && candidate > 0) {
+          return Math.round(candidate * 100) / 100;
+        }
+      }
+
+      console.warn(
+        "SpendSmart: Invalid budget format in localStorage. Using default."
+      );
+      return DEFAULT_MONTHLY_BUDGET;
+    } catch (err) {
+      console.warn("SpendSmart: Failed to parse budget from localStorage:", err);
+      return DEFAULT_MONTHLY_BUDGET;
+    }
+  }
+
+  /**
+   * Persists monthly budget to localStorage with JSON.stringify() and error catching.
+   */
+  function saveBudgetToStorage() {
+    try {
+      const serialized = JSON.stringify(monthlyBudget);
+      localStorage.setItem(STORAGE_KEYS.BUDGET, serialized);
+      localStorage.setItem(LEGACY_STORAGE_KEYS.BUDGET, serialized);
+    } catch (err) {
+      console.error("SpendSmart: Failed to save budget to localStorage:", err);
+      showToast("Unable to save budget changes to local storage.", "error");
+    }
+  }
+
+  let monthlyBudget = loadBudgetFromStorage();
+  /** @type {Array<{id:string,title:string,amount:number,category:string,date:string,paymentMethod:string,notes:string}>} */
+  let expenses = loadExpensesFromStorage();
+
+  let editingExpenseId = null;
+  let pendingDeleteId = null;
+  let isSubmitting = false;
+  let lastFocusedBeforeModal = null;
+
+
   function populateMonthFilter() {
     const select = document.getElementById("filterMonth");
     if (!select) return;
@@ -387,11 +575,11 @@
       return sum + e.amount;
     }, 0);
 
-    const remaining = MONTHLY_BUDGET - monthlyTotal;
-    const isOverBudget = monthlyTotal > MONTHLY_BUDGET;
-    const overBudgetAmount = isOverBudget ? monthlyTotal - MONTHLY_BUDGET : 0;
+    const remaining = monthlyBudget - monthlyTotal;
+    const isOverBudget = monthlyTotal > monthlyBudget;
+    const overBudgetAmount = isOverBudget ? monthlyTotal - monthlyBudget : 0;
     const percentSpent =
-      MONTHLY_BUDGET > 0 ? (monthlyTotal / MONTHLY_BUDGET) * 100 : 0;
+      monthlyBudget > 0 ? (monthlyTotal / monthlyBudget) * 100 : 0;
     const percentLeft = Math.max(0, 100 - percentSpent);
 
     const parts = targetMonthKey.split("-");
@@ -483,12 +671,12 @@
 
   function getBudgetStatus(percentSpent) {
     if (percentSpent > 100) {
-      return { text: "Over budget", className: "progress-meta__status--warn" };
+      return { text: "Over budget", className: "progress-meta__status--danger" };
     }
     if (percentSpent >= 85) {
       return { text: "Watch spending", className: "progress-meta__status--warn" };
     }
-    return { text: "On track", className: "" };
+    return { text: "On track", className: "progress-meta__status--ok" };
   }
 
   function setIconOnElement(el, category) {
@@ -874,7 +1062,7 @@
       }
     }
 
-    if (budgetEl) budgetEl.textContent = formatINR(MONTHLY_BUDGET);
+    if (budgetEl) budgetEl.textContent = formatINR(monthlyBudget);
     if (budgetHint) {
       budgetHint.textContent = totals.monthLabel.split(" ")[0] + " limit";
     }
@@ -883,9 +1071,11 @@
       if (totals.isOverBudget) {
         remainingEl.textContent = "-" + formatINR(totals.overBudgetAmount);
         remainingEl.classList.add("summary-card__amount--over");
+        remainingEl.classList.remove("summary-card__amount--accent");
       } else {
         remainingEl.textContent = formatINR(totals.remaining);
         remainingEl.classList.remove("summary-card__amount--over");
+        remainingEl.classList.add("summary-card__amount--accent");
       }
     }
 
@@ -913,24 +1103,27 @@
     const statusEl = document.getElementById("budgetStatus");
     const progressBar = document.getElementById("budgetProgressBar");
     const progressFill = document.getElementById("budgetProgressFill");
-    const messageAmount = document.getElementById("budgetMessageAmount");
     const budgetMessage = document.getElementById("budgetMessage");
+    const budgetEditorMonth = document.getElementById("budgetEditorMonth");
+    const budgetInput = document.getElementById("budgetInput");
 
     if (monthLabel) {
       monthLabel.textContent = totals.isAllMonths
         ? totals.monthLabel + " (Current Month)"
         : totals.monthLabel;
     }
-    if (limitEl) limitEl.textContent = formatINR(MONTHLY_BUDGET);
+    if (limitEl) limitEl.textContent = formatINR(monthlyBudget);
     if (spentEl) spentEl.textContent = formatINR(totals.monthlyTotal);
 
     if (remainingEl) {
       if (totals.isOverBudget) {
         remainingEl.textContent = "-" + formatINR(totals.overBudgetAmount);
         remainingEl.classList.add("summary-card__amount--over");
+        remainingEl.classList.remove("text-accent");
       } else {
         remainingEl.textContent = formatINR(totals.remaining);
         remainingEl.classList.remove("summary-card__amount--over");
+        remainingEl.classList.add("text-accent");
       }
     }
 
@@ -946,10 +1139,14 @@
     const barWidth = Math.min(100, totals.percentSpent);
     if (progressFill) {
       progressFill.style.width = barWidth + "%";
+      progressFill.classList.remove(
+        "progress-bar__fill--over",
+        "progress-bar__fill--warn"
+      );
       if (totals.isOverBudget) {
         progressFill.classList.add("progress-bar__fill--over");
-      } else {
-        progressFill.classList.remove("progress-bar__fill--over");
+      } else if (totals.percentSpent >= 85) {
+        progressFill.classList.add("progress-bar__fill--warn");
       }
     }
 
@@ -963,12 +1160,23 @@
           'You are <strong id="budgetMessageAmount">' +
           formatINR(totals.overBudgetAmount) +
           "</strong> over your monthly budget.";
+        budgetMessage.classList.add("budget-message--over");
       } else {
         budgetMessage.innerHTML =
           'You have <strong id="budgetMessageAmount">' +
           formatINR(totals.remaining) +
           "</strong> left for the rest of the month.";
+        budgetMessage.classList.remove("budget-message--over");
       }
+    }
+
+    if (budgetEditorMonth) {
+      budgetEditorMonth.textContent = totals.monthLabel;
+    }
+
+    if (budgetInput && document.activeElement !== budgetInput) {
+      budgetInput.value = monthlyBudget;
+      budgetInput.placeholder = String(monthlyBudget);
     }
   }
 
@@ -1143,6 +1351,7 @@
       paymentMethod: data.paymentMethod,
       notes: data.notes,
     });
+    saveExpensesToStorage();
   }
 
   function updateExpense(id, data) {
@@ -1159,6 +1368,7 @@
       paymentMethod: data.paymentMethod,
       notes: data.notes,
     };
+    saveExpensesToStorage();
     return true;
   }
 
@@ -1197,6 +1407,7 @@
     expenses = expenses.filter(function (e) {
       return e.id !== id;
     });
+    saveExpensesToStorage();
   }
 
   function openConfirmDialog(expense) {
@@ -1243,9 +1454,13 @@
     toast.textContent = message;
     stack.appendChild(toast);
 
-    requestAnimationFrame(function () {
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () {
+        toast.classList.add("is-visible");
+      });
+    } else {
       toast.classList.add("is-visible");
-    });
+    }
 
     window.setTimeout(function () {
       toast.classList.remove("is-visible");
@@ -1523,6 +1738,101 @@
     });
   }
 
+  function initBudgetForm() {
+    const form = document.getElementById("budgetForm");
+    const input = document.getElementById("budgetInput");
+    const errorEl = document.getElementById("budgetInputError");
+
+    if (!form || !input) return;
+
+    input.value = monthlyBudget;
+    input.placeholder = String(monthlyBudget);
+
+    function clearBudgetError() {
+      input.classList.remove("field--invalid");
+      if (errorEl) errorEl.textContent = "";
+    }
+
+    input.addEventListener("input", clearBudgetError);
+    input.addEventListener("change", clearBudgetError);
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      clearBudgetError();
+
+      const rawVal = input.value.trim();
+      if (!rawVal) {
+        input.classList.add("field--invalid");
+        if (errorEl) {
+          errorEl.textContent = "Please enter a monthly budget.";
+        }
+        input.focus();
+        return;
+      }
+
+      const parsedVal = Number(rawVal);
+      if (!Number.isFinite(parsedVal) || parsedVal <= 0) {
+        input.classList.add("field--invalid");
+        if (errorEl) {
+          errorEl.textContent = "Please enter a valid budget greater than ₹0.";
+        }
+        input.focus();
+        return;
+      }
+
+      if (parsedVal > 100000000) {
+        input.classList.add("field--invalid");
+        if (errorEl) {
+          errorEl.textContent = "Budget cannot exceed ₹10,00,00,000.";
+        }
+        input.focus();
+        return;
+      }
+
+      monthlyBudget = Math.round(parsedVal * 100) / 100;
+      saveBudgetToStorage();
+      render();
+      showToast("Monthly budget updated to " + formatINR(monthlyBudget) + ".");
+    });
+  }
+
+  function syncThemeToggleUI(theme) {
+    const btn = document.getElementById("themeToggleBtn");
+    if (!btn) return;
+    const isDark = theme === "dark";
+    const moonIcon = btn.querySelector(".theme-icon--moon");
+    const sunIcon = btn.querySelector(".theme-icon--sun");
+    if (moonIcon) moonIcon.hidden = isDark;
+    if (sunIcon) sunIcon.hidden = !isDark;
+    const label = isDark ? "Switch to light theme" : "Switch to dark theme";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+  }
+
+  function initThemeToggle() {
+    const btn = document.getElementById("themeToggleBtn");
+    if (!btn) return;
+    const currentTheme =
+      document.documentElement.getAttribute("data-theme") || "light";
+    syncThemeToggleUI(currentTheme);
+
+    btn.addEventListener("click", function () {
+      const active =
+        document.documentElement.getAttribute("data-theme") === "dark"
+          ? "dark"
+          : "light";
+      const next = active === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try {
+        localStorage.setItem(STORAGE_KEYS.THEME, next);
+      } catch (err) {
+        console.warn("SpendSmart: Failed to save theme to localStorage:", err);
+      }
+      syncThemeToggleUI(next);
+      showToast("Switched to " + next + " mode.");
+    });
+  }
+
   function initPlaceholders() {
     document.querySelectorAll(".nav-link--placeholder, .link--placeholder").forEach(function (link) {
       link.addEventListener("click", function (e) {
@@ -1535,6 +1845,8 @@
     populateMonthFilter();
     render();
     initSidebar();
+    initThemeToggle();
+    initBudgetForm();
     initExpenseForm();
     initExpenseFilters();
     initTransactionActions();
