@@ -9,6 +9,7 @@ SpendSmart is a modern, responsive personal finance dashboard built with vanilla
 - **HTML5** – Semantic structure, accessible modal dialogs, and ARIA attributes
 - **CSS3** – Custom properties (design tokens), CSS Grid & Flexbox, micro-animations, and full dark/light theme support
 - **Vanilla JavaScript (ES6+)** – Clean modular architecture, DOM manipulation, form validation, dynamic calculations, and `localStorage` persistence
+- **Chart.js** – Local bundled Chart.js build for responsive, interactive doughnut, bar, and line visualizations (with a CDN fallback)
 
 ---
 
@@ -20,8 +21,8 @@ spendsmart-expense-tracker/
 ├── css/
 │   └── style.css    # Complete design system, component styles, dark theme, and responsive breakpoints
 ├── js/
-│   └── script.js    # State management, CRUD handlers, budget editor, filtering, and persistence
-├── assets/          # Static assets and icons
+│   ├── chart.umd.min.js # Bundled Chart.js dependency for offline chart rendering
+│   └── script.js    # State management, CRUD, filters, analytics, charts, themes, and persistence
 └── README.md        # Project documentation, architecture overview, and testing instructions
 ```
 
@@ -42,14 +43,18 @@ spendsmart-expense-tracker/
   - Dynamic spending message and category breakdown
 - **Safe Corruption Recovery**: Built-in safety guards validate and sanitize data loaded from `localStorage`. Corrupted JSON or invalid array items are safely handled with graceful fallbacks without crashing the application.
 - **Dark/Light Theme Toggle**: Toggle between dark and light themes with preference saved in `localStorage` and fallback to system `prefers-color-scheme`.
+- **Interactive Analytics Dashboard**:
+  - A doughnut chart and category breakdown show how spending is distributed by category.
+  - A monthly spending chart supports bar and line views, plus a weekly daily-spend view.
+  - Chart tooltips show formatted INR totals and category shares.
+  - Search, category, and month filters update the transaction list, doughnut chart, trend chart, category totals, and insights together.
+  - Insights identify the highest-spending category, average and largest transaction, month-over-month movement, daily pace, and budget-based recommendations.
 
 ### Day 1–3 Core Features Preserved
 - **Complete Expense CRUD**: Add, edit, and delete transactions using accessible dialogs and validation.
 - **Real-time Search & Filters**: Instant search by title, category filtering (Food, Transport, Shopping, Education, Entertainment, Bills, Health, Other), and dynamic month filter.
 - **Multi-criteria Sorting**: Sort by Newest, Oldest, Amount (High to Low / Low to High), and Title (A–Z / Z–A).
-- **Analytics & Visualizations**:
-  - Weekly spending bar chart with adaptive date ranges
-  - Category breakdown with proportional progress bars and INR formatting
+- **Responsive Dashboard**: Cards, filters, charts, transaction views, and the sidebar adapt for desktop, tablet, and mobile. On mobile, the sidebar becomes a drawer and transactions switch from a table to touch-friendly cards.
 - **Mobile Responsive**: Responsive layout with sidebar drawer, adaptive table-to-list transaction views, and touch-friendly controls.
 
 ---
@@ -129,6 +134,12 @@ Follow these steps to verify all Day 4 capabilities:
 1. Click the sun/moon theme toggle button in the top navigation bar.
 2. Verify the application switches between light and dark modes.
 3. Refresh the page to confirm your chosen theme is preserved.
+
+### 8. Test Filtered Analytics
+1. Select a category or enter text in the expense search field.
+2. Confirm the transaction list, doughnut chart, category totals, highest-category card, and trend chart all reflect the matching transactions.
+3. Change the month filter and repeat to confirm the dashboard uses that month’s data.
+4. Use the **Monthly / Weekly** and **Bar / Line** controls above Spending Trends to change the trend view.
 
 ---
 

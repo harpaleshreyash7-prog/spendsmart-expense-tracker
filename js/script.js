@@ -69,6 +69,22 @@
     Other: "var(--category-other)",
   };
 
+  const categoryHexColors = {
+    Food: "#059669",
+    Transport: "#2563eb",
+    Shopping: "#7c3aed",
+    Education: "#d97706",
+    Entertainment: "#db2777",
+    Bills: "#64748b",
+    Health: "#0d9488",
+    Other: "#94a3b8",
+  };
+
+  let trendsChartInstance = null;
+  let categoryChartInstance = null;
+  let trendsTimeRange = "monthly"; // "monthly" | "weekly"
+  let trendsChartType = "bar"; // "bar" | "line"
+
   const inrFormatter = new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -557,11 +573,15 @@
     return copy;
   }
 
-  function calculateTotals(refDate, selectedMonth) {
+  function calculateTotals(refDate, selectedMonth, filters) {
     const now = refDate || new Date();
     const currentMonthKey = todayISO().slice(0, 7);
     const isAllMonths = !selectedMonth || selectedMonth === "all";
     const targetMonthKey = isAllMonths ? currentMonthKey : selectedMonth;
+    // Budget figures intentionally use every transaction in the selected month.
+    // Analytics, however, should mirror the active search/category/month filters.
+    const activeFilters = filters || getActiveFilters();
+    const analyticsExpenses = getFilteredExpenses(activeFilters);
 
     const monthly = expenses.filter(function (e) {
       return e.date.slice(0, 7) === targetMonthKey;
@@ -591,8 +611,10 @@
       year: "numeric",
     }).format(targetMonthDate);
 
-    const categorySource = isAllMonths ? expenses : monthly;
-    const categoryTotal = isAllMonths ? allTimeTotal : monthlyTotal;
+    const categorySource = analyticsExpenses;
+    const categoryTotal = categorySource.reduce(function (sum, e) {
+      return sum + e.amount;
+    }, 0);
     const byCategory = {};
     categorySource.forEach(function (e) {
       byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
@@ -613,7 +635,7 @@
         return b.amount - a.amount;
       });
 
-    const chartExpenses = isAllMonths ? expenses : monthly;
+    const chartExpenses = analyticsExpenses;
     const currentWeekDays = getWeekRange(now);
     const hasCurrentWeekExpense = currentWeekDays.some(function (d) {
       return chartExpenses.some(function (e) {
@@ -633,7 +655,7 @@
     }
 
     const weekly = chosenWeekDays.map(function (day) {
-      const amount = expenses
+      const amount = chartExpenses
         .filter(function (e) {
           return e.date === day.iso;
         })
@@ -666,6 +688,8 @@
       monthLabel: monthLabel,
       monthExpenseCount: monthly.length,
       allTimeExpenseCount: expenses.length,
+      analyticsExpenses: analyticsExpenses,
+      analyticsExpenseCount: analyticsExpenses.length,
     };
   }
 
@@ -918,16 +942,680 @@
     });
   }
 
+  function getChartThemeColors() {
+    const isDark =
+      document.documentElement.getAttribute("data-theme") === "dark";
+    return {
+      isDark: isDark,
+      text: isDark ? "#9ca3af" : "#64748b",
+      textBold: isDark ? "#f9fafb" : "#0f1729",
+      grid: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 41, 0.06)",
+      tooltipBg: isDark ? "#1f2937" : "#0f1729",
+      tooltipText: isDark ? "#f9fafb" : "#ffffff",
+      tooltipBorder: isDark ? "#374151" : "#e2e8f0",
+      accent: isDark ? "#10b981" : "#059669",
+      accentSoft: isDark
+        ? "rgba(16, 185, 129, 0.18)"
+        : "rgba(5, 150, 105, 0.14)",
+      danger: isDark ? "#f87171" : "#dc2626",
+      budgetLine: isDark
+        ? "rgba(248, 113, 113, 0.85)"
+        : "rgba(220, 38, 38, 0.85)",
+    };
+  }
+
+  function calculateMonthlyTrends(filters) {
+    // Keep the trend chart aligned with the transaction list, including month filters.
+    const dataset = getFilteredExpenses(filters || getActiveFilters());
+
+    const monthSet = new Set();
+    dataset.forEach(function (e) {
+      if (e.date && e.date.length >= 7) {
+        monthSet.add(e.date.slice(0, 7));
+      }
+    });
+    const currentMonthKey = todayISO().slice(0, 7);
+    monthSet.add(currentMonthKey);
+
+    const sortedKeys = Array.from(monthSet).sort();
+    const latestKey = sortedKeys[sortedKeys.length - 1] || currentMonthKey;
+
+    const parts = latestKey.split("-");
+    const endYear = parseInt(parts[0], 10);
+    const endMonth = parseInt(parts[1], 10);
+    const allTimelineKeys = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(endYear, endMonth - 1 - i, 1);
+      const k =
+        d.getFullYear() +
+        "-" +
+        String(d.getMonth() + 1).padStart(2, "0");
+      allTimelineKeys.push(k);
+    }
+    sortedKeys.forEach(function (k) {
+      if (allTimelineKeys.indexOf(k) === -1) {
+        allTimelineKeys.push(k);
+      }
+    });
+    allTimelineKeys.sort();
+
+    const monthData = allTimelineKeys.map(function (mKey) {
+      const mParts = mKey.split("-");
+      const mDate = new Date(
+        parseInt(mParts[0], 10),
+        parseInt(mParts[1], 10) - 1,
+        1,
+        12,
+        0,
+        0
+      );
+      const label = new Intl.DateTimeFormat("en-IN", {
+        month: "short",
+        year: "2-digit",
+      }).format(mDate);
+      const fullLabel = new Intl.DateTimeFormat("en-IN", {
+        month: "long",
+        year: "numeric",
+      }).format(mDate);
+
+      const matching = dataset.filter(function (e) {
+        return e.date.slice(0, 7) === mKey;
+      });
+      const total = matching.reduce(function (sum, e) {
+        return sum + e.amount;
+      }, 0);
+
+      return {
+        key: mKey,
+        label: label,
+        fullLabel: fullLabel,
+        amount: total,
+        count: matching.length,
+      };
+    });
+
+    let peak = monthData[0] || { label: "None", fullLabel: "None", amount: 0 };
+    let totalSpendAll = 0;
+    let activeMonthCount = 0;
+    monthData.forEach(function (m) {
+      if (m.amount > peak.amount) {
+        peak = m;
+      }
+      if (m.amount > 0) {
+        totalSpendAll += m.amount;
+        activeMonthCount++;
+      }
+    });
+
+    const avgMonthly =
+      activeMonthCount > 0 ? totalSpendAll / activeMonthCount : 0;
+
+    const curMonthData =
+      monthData.find(function (m) {
+        return m.key === currentMonthKey;
+      }) || { amount: 0 };
+    const curIdx = monthData.findIndex(function (m) {
+      return m.key === currentMonthKey;
+    });
+    const prevMonthData = curIdx > 0 ? monthData[curIdx - 1] : null;
+
+    let monthOverMonthPct = null;
+    if (prevMonthData && prevMonthData.amount > 0) {
+      monthOverMonthPct =
+        ((curMonthData.amount - prevMonthData.amount) / prevMonthData.amount) *
+        100;
+    }
+
+    return {
+      months: monthData,
+      labels: monthData.map(function (m) {
+        return m.label;
+      }),
+      amounts: monthData.map(function (m) {
+        return m.amount;
+      }),
+      counts: monthData.map(function (m) {
+        return m.count;
+      }),
+      peakLabel: peak.fullLabel || peak.label,
+      peakAmount: peak.amount,
+      averageMonthlySpend: avgMonthly,
+      monthOverMonthPct: monthOverMonthPct,
+      currentMonthTotal: curMonthData.amount,
+      datasetCount: dataset.length,
+    };
+  }
+
+  function renderCategoryDoughnutChart(categoryRows, categoryTotal) {
+    if (typeof Chart === "undefined") return;
+
+    const canvas = document.getElementById("categoryDoughnutChart");
+    if (!canvas) return;
+
+    const wrapper = document.getElementById("categoryChartWrapper");
+    const emptyEl = document.getElementById("categoryChartEmpty");
+    const totalEl = document.getElementById("doughnutCenterTotal");
+
+    if (categoryChartInstance) {
+      categoryChartInstance.destroy();
+      categoryChartInstance = null;
+    }
+
+    if (!categoryRows || categoryRows.length === 0 || categoryTotal === 0) {
+      if (wrapper) wrapper.hidden = true;
+      if (emptyEl) emptyEl.hidden = false;
+      if (totalEl) totalEl.textContent = "₹0";
+      return;
+    }
+
+    if (wrapper) wrapper.hidden = false;
+    if (emptyEl) emptyEl.hidden = true;
+    if (totalEl) totalEl.textContent = formatINR(categoryTotal);
+
+    const colors = getChartThemeColors();
+    const labels = categoryRows.map(function (r) {
+      return r.name;
+    });
+    const data = categoryRows.map(function (r) {
+      return r.amount;
+    });
+    const sliceColors = categoryRows.map(function (r) {
+      return categoryHexColors[r.name] || "#94a3b8";
+    });
+
+    categoryChartInstance = new Chart(canvas, {
+      type: "doughnut",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            data: data,
+            backgroundColor: sliceColors,
+            borderColor: colors.isDark ? "#111827" : "#ffffff",
+            borderWidth: 2,
+            hoverOffset: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "68%",
+        plugins: {
+          legend: {
+            display: false,
+          },
+          tooltip: {
+            backgroundColor: colors.tooltipBg,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipText,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 8,
+            titleFont: {
+              family: "Plus Jakarta Sans",
+              weight: 600,
+            },
+            bodyFont: {
+              family: "Plus Jakarta Sans",
+            },
+            callbacks: {
+              label: function (ctx) {
+                const val = ctx.parsed;
+                const pct =
+                  categoryTotal > 0
+                    ? ((val / categoryTotal) * 100).toFixed(1)
+                    : "0.0";
+                return " " + ctx.label + ": " + formatINR(val) + " (" + pct + "%)";
+              },
+            },
+          },
+        },
+        animation: {
+          duration: 350,
+          easing: "easeOutQuart",
+        },
+      },
+    });
+  }
+
+  function renderTrendsChart(totals, monthlyTrends) {
+    if (typeof Chart === "undefined") return;
+
+    const canvas = document.getElementById("trendsChart");
+    if (!canvas) return;
+
+    const container = document.getElementById("trendsChartContainer");
+    const emptyEl = document.getElementById("trendsChartEmpty");
+    const subtitleEl = document.getElementById("chartSubtitle");
+    const peakEl = document.getElementById("chartStatPeak");
+    const avgEl = document.getElementById("chartStatAverage");
+    const periodEl = document.getElementById("chartStatPeriod");
+
+    const hasTrendsData =
+      monthlyTrends &&
+      monthlyTrends.amounts &&
+      monthlyTrends.amounts.some(function (a) {
+        return a > 0;
+      });
+    const hasWeeklyData =
+      totals &&
+      totals.weekly &&
+      totals.weekly.some(function (w) {
+        return w.amount > 0;
+      });
+
+    if (trendsChartInstance) {
+      trendsChartInstance.destroy();
+      trendsChartInstance = null;
+    }
+
+    if (!hasTrendsData && !hasWeeklyData && totals.analyticsExpenseCount === 0) {
+      if (container) container.hidden = true;
+      if (emptyEl) emptyEl.hidden = false;
+      if (peakEl) peakEl.textContent = "—";
+      if (avgEl) avgEl.textContent = "—";
+      if (periodEl) periodEl.textContent = "—";
+      return;
+    }
+
+    if (container) container.hidden = false;
+    if (emptyEl) emptyEl.hidden = true;
+
+    const colors = getChartThemeColors();
+    let labels = [];
+    let datasets = [];
+
+    if (trendsTimeRange === "monthly") {
+      if (subtitleEl) subtitleEl.textContent = "Monthly spending & budget trends";
+      labels = monthlyTrends.labels;
+
+      if (trendsChartType === "bar") {
+        datasets.push({
+          type: "bar",
+          label: "Monthly Spending",
+          data: monthlyTrends.amounts,
+          backgroundColor: monthlyTrends.amounts.map(function (amt) {
+            return amt > monthlyBudget
+              ? "rgba(239, 68, 68, 0.85)"
+              : colors.accent;
+          }),
+          borderRadius: 6,
+          maxBarThickness: 42,
+          order: 2,
+        });
+      } else {
+        datasets.push({
+          type: "line",
+          label: "Monthly Spending",
+          data: monthlyTrends.amounts,
+          borderColor: colors.accent,
+          backgroundColor: colors.accentSoft,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          borderWidth: 2.5,
+          order: 2,
+        });
+      }
+
+      // Target budget line
+      datasets.push({
+        type: "line",
+        label: "Monthly Budget",
+        data: monthlyTrends.labels.map(function () {
+          return monthlyBudget;
+        }),
+        borderColor: colors.budgetLine,
+        borderDash: [6, 4],
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: false,
+        order: 1,
+      });
+
+      if (peakEl) {
+        peakEl.textContent =
+          monthlyTrends.peakLabel + " (" + formatINR(monthlyTrends.peakAmount) + ")";
+      }
+      if (avgEl) {
+        avgEl.textContent = formatINR(monthlyTrends.averageMonthlySpend) + "/mo";
+      }
+      if (periodEl) {
+        periodEl.textContent = monthlyTrends.labels.length + " months tracked";
+      }
+    } else {
+      // Weekly view
+      if (subtitleEl) {
+        subtitleEl.textContent = totals.weekSubtitle || "Daily spending breakdown";
+      }
+      labels = totals.weekly.map(function (d) {
+        return d.day;
+      });
+      const amounts = totals.weekly.map(function (d) {
+        return d.amount;
+      });
+
+      if (trendsChartType === "bar") {
+        datasets.push({
+          type: "bar",
+          label: "Daily Spending",
+          data: amounts,
+          backgroundColor: colors.accent,
+          borderRadius: 6,
+          maxBarThickness: 36,
+        });
+      } else {
+        datasets.push({
+          type: "line",
+          label: "Daily Spending",
+          data: amounts,
+          borderColor: colors.accent,
+          backgroundColor: colors.accentSoft,
+          fill: true,
+          tension: 0.35,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          borderWidth: 2.5,
+        });
+      }
+
+      const peakDay = totals.weekly.reduce(function (max, d) {
+        return d.amount > max.amount ? d : max;
+      }, totals.weekly[0] || { day: "—", amount: 0 });
+      const weeklyTotal = totals.weekly.reduce(function (sum, d) {
+        return sum + d.amount;
+      }, 0);
+
+      if (peakEl) {
+        peakEl.textContent =
+          peakDay.day + " (" + formatINR(peakDay.amount) + ")";
+      }
+      if (avgEl) {
+        avgEl.textContent = formatINR(weeklyTotal / 7) + "/day";
+      }
+      if (periodEl) {
+        periodEl.textContent = "7-day view";
+      }
+    }
+
+    trendsChartInstance = new Chart(canvas, {
+      data: {
+        labels: labels,
+        datasets: datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: "index",
+          intersect: false,
+        },
+        plugins: {
+          legend: {
+            display: trendsTimeRange === "monthly",
+            position: "top",
+            align: "end",
+            labels: {
+              boxWidth: 12,
+              boxHeight: 12,
+              color: colors.text,
+              font: {
+                family: "Plus Jakarta Sans",
+                size: 11,
+                weight: 500,
+              },
+            },
+          },
+          tooltip: {
+            backgroundColor: colors.tooltipBg,
+            titleColor: colors.tooltipText,
+            bodyColor: colors.tooltipText,
+            borderColor: colors.tooltipBorder,
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 8,
+            titleFont: {
+              family: "Plus Jakarta Sans",
+              weight: 600,
+            },
+            bodyFont: {
+              family: "Plus Jakarta Sans",
+            },
+            callbacks: {
+              label: function (ctx) {
+                return (
+                  " " + ctx.dataset.label + ": " + formatINR(ctx.parsed.y)
+                );
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false,
+            },
+            ticks: {
+              color: colors.text,
+              font: {
+                family: "Plus Jakarta Sans",
+                size: 11,
+              },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: colors.grid,
+            },
+            ticks: {
+              color: colors.text,
+              font: {
+                family: "Plus Jakarta Sans",
+                size: 11,
+              },
+              callback: function (val) {
+                if (val >= 1000) {
+                  return "₹" + Math.round(val / 1000) + "k";
+                }
+                return "₹" + val;
+              },
+            },
+          },
+        },
+        animation: {
+          duration: 350,
+          easing: "easeOutQuart",
+        },
+      },
+    });
+  }
+
+  function renderAnalyticsInsights(totals, monthlyTrends) {
+    const topBadge = document.getElementById("insightTopCategoryBadge");
+    const topAmount = document.getElementById("insightTopCategoryAmount");
+    const topSub = document.getElementById("insightTopCategorySub");
+
+    const trendTag = document.getElementById("insightTrendTag");
+    const trendAmount = document.getElementById("insightMonthlyTrendAmount");
+    const trendSub = document.getElementById("insightMonthlyTrendSub");
+
+    const avgAmount = document.getElementById("insightAverageAmount");
+    const largestSub = document.getElementById("insightLargestAmountSub");
+
+    const smartText = document.getElementById("insightSmartTipText");
+
+    // 1. Highest Spending Category
+    const topCat =
+      totals.categoryRows.length > 0 ? totals.categoryRows[0] : null;
+    if (topCat && topCat.amount > 0) {
+      const topCount = totals.analyticsExpenses.filter(function (e) {
+        return e.category === topCat.name;
+      }).length;
+      if (topBadge) {
+        topBadge.textContent = topCat.name;
+        const color = categoryHexColors[topCat.name] || "#059669";
+        topBadge.style.backgroundColor = color + "20";
+        topBadge.style.color = color;
+      }
+      if (topAmount) topAmount.textContent = formatINR(topCat.amount);
+      if (topSub) {
+        topSub.textContent =
+          topCat.percent.toFixed(1) +
+          "% of total · " +
+          topCount +
+          " transactions";
+      }
+    } else {
+      if (topBadge) {
+        topBadge.textContent = "None";
+        topBadge.style.backgroundColor = "";
+        topBadge.style.color = "";
+      }
+      if (topAmount) topAmount.textContent = "₹0";
+      if (topSub) topSub.textContent = "No expenses recorded";
+    }
+
+    // 2. Monthly Trend & Daily Pace
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const lastDayOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0
+    ).getDate();
+    const daysRemainingInMonth = Math.max(1, lastDayOfMonth - dayOfMonth);
+
+    if (trendTag) {
+      if (monthlyTrends.monthOverMonthPct !== null) {
+        const pct = monthlyTrends.monthOverMonthPct;
+        if (pct > 0) {
+          trendTag.className = "insight-trend-tag insight-trend-tag--up";
+          trendTag.textContent = "+" + pct.toFixed(1) + "% vs last mo";
+        } else if (pct < 0) {
+          trendTag.className = "insight-trend-tag insight-trend-tag--down";
+          trendTag.textContent = pct.toFixed(1) + "% vs last mo";
+        } else {
+          trendTag.className = "insight-trend-tag";
+          trendTag.textContent = "0% vs last mo";
+        }
+      } else {
+        trendTag.className = "insight-trend-tag";
+        trendTag.textContent = "1st Period";
+      }
+    }
+
+    if (trendAmount) {
+      trendAmount.textContent = formatINR(
+        totals.isAllMonths ? totals.allTimeTotal : totals.monthlyTotal
+      );
+    }
+
+    if (trendSub) {
+      const activeSpend = totals.monthlyTotal;
+      const dailyPace = activeSpend / Math.max(1, dayOfMonth);
+      trendSub.textContent =
+        "Avg. " + formatINR(dailyPace) + "/day for " + totals.monthLabel;
+    }
+
+    // 3. Average Spend & Largest Transaction
+    const activeList = totals.analyticsExpenses;
+
+    const activeTotal = activeList.reduce(function (sum, e) {
+      return sum + e.amount;
+    }, 0);
+    const avgSpend =
+      activeList.length > 0 ? activeTotal / activeList.length : 0;
+
+    let largestExpense = null;
+    if (activeList.length > 0) {
+      largestExpense = activeList.reduce(function (max, e) {
+        return e.amount > max.amount ? e : max;
+      }, activeList[0]);
+    }
+
+    if (avgAmount) avgAmount.textContent = formatINR(avgSpend);
+    if (largestSub) {
+      if (largestExpense) {
+        largestSub.textContent =
+          "Max: " +
+          formatINR(largestExpense.amount) +
+          " (" +
+          largestExpense.title +
+          ")";
+        largestSub.setAttribute("title", largestExpense.title);
+      } else {
+        largestSub.textContent = "No expenses recorded";
+      }
+    }
+
+    // 4. Dynamic Smart Financial Insight
+    if (smartText) {
+      const dailyAllowance = Math.max(
+        0,
+        totals.remaining / daysRemainingInMonth
+      );
+      if (totals.isOverBudget) {
+        smartText.textContent =
+          "⚠️ Budget exceeded by " +
+          formatINR(totals.overBudgetAmount) +
+          " for " +
+          totals.monthLabel +
+          ". Top spend is " +
+          (topCat ? topCat.name : "general") +
+          " (" +
+          (topCat ? topCat.percent.toFixed(0) : "0") +
+          "% of total). Consider pausing discretionary purchases.";
+      } else if (totals.percentSpent >= 85) {
+        smartText.textContent =
+          "⚡ Budget alert: " +
+          totals.percentSpent.toFixed(0) +
+          "% used with " +
+          daysRemainingInMonth +
+          " days left. Recommended safe limit: " +
+          formatINR(dailyAllowance) +
+          "/day.";
+      } else if (totals.categoryRows.length > 0) {
+        smartText.textContent =
+          "✅ Spending is on track at " +
+          totals.percentSpent.toFixed(0) +
+          "% of budget. You have " +
+          formatINR(totals.remaining) +
+          " remaining (" +
+          formatINR(dailyAllowance) +
+          "/day allowance) for " +
+          totals.monthLabel +
+          ".";
+      } else {
+        smartText.textContent =
+          "💡 Ready to master your finances? Add your first expense to unlock interactive category charts and monthly trend analytics.";
+      }
+    }
+  }
+
   function renderCategories(totals) {
     const container = document.getElementById("categoryList");
     const subtitle = document.getElementById("categorySubtitle");
+    const badge = document.getElementById("categoryCountBadge");
     if (!container) return;
+
+    if (badge) {
+      const count = totals.categoryRows.length;
+      badge.textContent = count + (count === 1 ? " Category" : " Categories");
+    }
 
     if (subtitle) {
       subtitle.textContent = totals.isAllMonths
         ? "Share of all-time expenses"
         : "Share of " + totals.monthLabel + " expenses";
     }
+
+    // Render interactive Chart.js Doughnut
+    renderCategoryDoughnutChart(totals.categoryRows, totals.categoryTotal);
 
     container.replaceChildren();
 
@@ -943,7 +1631,8 @@
 
     totals.categoryRows.forEach(function (cat) {
       const pct = cat.percent.toFixed(1);
-      const color = categoryColors[cat.name] || categoryColors.Other;
+      const color =
+        categoryHexColors[cat.name] || categoryColors[cat.name] || "#94a3b8";
 
       const li = document.createElement("li");
       li.className = "category-item";
@@ -978,51 +1667,75 @@
     });
   }
 
-  function renderWeeklyChart(totals) {
-    const chart = document.getElementById("weeklyChart");
-    const chartSubtitle = document.getElementById("chartSubtitle");
-    if (!chart) return;
+  function initChartControls() {
+    const rangeMonthlyBtn = document.getElementById("chartRangeMonthlyBtn");
+    const rangeWeeklyBtn = document.getElementById("chartRangeWeeklyBtn");
+    const typeBarBtn = document.getElementById("chartTypeBarBtn");
+    const typeLineBtn = document.getElementById("chartTypeLineBtn");
 
-    if (chartSubtitle && totals.weekSubtitle) {
-      chartSubtitle.textContent = totals.weekSubtitle;
+    if (rangeMonthlyBtn && rangeWeeklyBtn) {
+      rangeMonthlyBtn.addEventListener("click", function () {
+        if (trendsTimeRange === "monthly") return;
+        trendsTimeRange = "monthly";
+        rangeMonthlyBtn.classList.add("btn-toggle--active");
+        rangeMonthlyBtn.setAttribute("aria-pressed", "true");
+        rangeWeeklyBtn.classList.remove("btn-toggle--active");
+        rangeWeeklyBtn.setAttribute("aria-pressed", "false");
+        const monthSelect = document.getElementById("filterMonth");
+        const selectedMonth = monthSelect ? monthSelect.value : "all";
+        const filters = getActiveFilters();
+        const totals = calculateTotals(new Date(), selectedMonth, filters);
+        const monthlyTrends = calculateMonthlyTrends(filters);
+        renderTrendsChart(totals, monthlyTrends);
+      });
+
+      rangeWeeklyBtn.addEventListener("click", function () {
+        if (trendsTimeRange === "weekly") return;
+        trendsTimeRange = "weekly";
+        rangeWeeklyBtn.classList.add("btn-toggle--active");
+        rangeWeeklyBtn.setAttribute("aria-pressed", "true");
+        rangeMonthlyBtn.classList.remove("btn-toggle--active");
+        rangeMonthlyBtn.setAttribute("aria-pressed", "false");
+        const monthSelect = document.getElementById("filterMonth");
+        const selectedMonth = monthSelect ? monthSelect.value : "all";
+        const filters = getActiveFilters();
+        const totals = calculateTotals(new Date(), selectedMonth, filters);
+        const monthlyTrends = calculateMonthlyTrends(filters);
+        renderTrendsChart(totals, monthlyTrends);
+      });
     }
 
-    chart.replaceChildren();
-    const maxAmount = Math.max(
-      0,
-      ...totals.weekly.map(function (d) {
-        return d.amount;
-      })
-    );
+    if (typeBarBtn && typeLineBtn) {
+      typeBarBtn.addEventListener("click", function () {
+        if (trendsChartType === "bar") return;
+        trendsChartType = "bar";
+        typeBarBtn.classList.add("btn-toggle--active");
+        typeBarBtn.setAttribute("aria-pressed", "true");
+        typeLineBtn.classList.remove("btn-toggle--active");
+        typeLineBtn.setAttribute("aria-pressed", "false");
+        const monthSelect = document.getElementById("filterMonth");
+        const selectedMonth = monthSelect ? monthSelect.value : "all";
+        const filters = getActiveFilters();
+        const totals = calculateTotals(new Date(), selectedMonth, filters);
+        const monthlyTrends = calculateMonthlyTrends(filters);
+        renderTrendsChart(totals, monthlyTrends);
+      });
 
-    totals.weekly.forEach(function (day) {
-      const heightPct = maxAmount > 0 ? (day.amount / maxAmount) * 100 : 0;
-
-      const item = document.createElement("div");
-      item.className = "bar-chart__item";
-
-      const value = document.createElement("span");
-      value.className = "bar-chart__value";
-      value.textContent = formatINR(day.amount);
-
-      const barWrap = document.createElement("div");
-      barWrap.className = "bar-chart__bar-wrap";
-
-      const bar = document.createElement("div");
-      bar.className = "bar-chart__bar";
-      bar.style.height = heightPct + "%";
-
-      barWrap.appendChild(bar);
-
-      const label = document.createElement("span");
-      label.className = "bar-chart__label";
-      label.textContent = day.day;
-
-      item.appendChild(value);
-      item.appendChild(barWrap);
-      item.appendChild(label);
-      chart.appendChild(item);
-    });
+      typeLineBtn.addEventListener("click", function () {
+        if (trendsChartType === "line") return;
+        trendsChartType = "line";
+        typeLineBtn.classList.add("btn-toggle--active");
+        typeLineBtn.setAttribute("aria-pressed", "true");
+        typeBarBtn.classList.remove("btn-toggle--active");
+        typeBarBtn.setAttribute("aria-pressed", "false");
+        const monthSelect = document.getElementById("filterMonth");
+        const selectedMonth = monthSelect ? monthSelect.value : "all";
+        const filters = getActiveFilters();
+        const totals = calculateTotals(new Date(), selectedMonth, filters);
+        const monthlyTrends = calculateMonthlyTrends(filters);
+        renderTrendsChart(totals, monthlyTrends);
+      });
+    }
   }
 
   function renderSummary(totals) {
@@ -1196,12 +1909,15 @@
   function render() {
     const monthSelect = document.getElementById("filterMonth");
     const selectedMonth = monthSelect ? monthSelect.value : "all";
-    const totals = calculateTotals(new Date(), selectedMonth);
+    const filters = getActiveFilters();
+    const totals = calculateTotals(new Date(), selectedMonth, filters);
+    const monthlyTrends = calculateMonthlyTrends(filters);
     renderCurrentDate();
     renderSummary(totals);
     renderBudgetCard(totals);
+    renderAnalyticsInsights(totals, monthlyTrends);
     renderCategories(totals);
-    renderWeeklyChart(totals);
+    renderTrendsChart(totals, monthlyTrends);
     renderExpenses();
   }
 
@@ -1569,7 +2285,7 @@
         if (clearSearchBtn) {
           clearSearchBtn.hidden = searchInput.value.trim().length === 0;
         }
-        renderExpenses();
+        render();
       });
     }
 
@@ -1580,13 +2296,13 @@
           clearSearchBtn.hidden = true;
           searchInput.focus();
         }
-        renderExpenses();
+        render();
       });
     }
 
     if (categorySelect) {
       categorySelect.addEventListener("change", function () {
-        renderExpenses();
+        render();
       });
     }
 
@@ -1829,6 +2545,13 @@
         console.warn("SpendSmart: Failed to save theme to localStorage:", err);
       }
       syncThemeToggleUI(next);
+      const monthSelect = document.getElementById("filterMonth");
+      const selectedMonth = monthSelect ? monthSelect.value : "all";
+      const filters = getActiveFilters();
+      const totals = calculateTotals(new Date(), selectedMonth, filters);
+      const monthlyTrends = calculateMonthlyTrends(filters);
+      renderTrendsChart(totals, monthlyTrends);
+      renderCategoryDoughnutChart(totals.categoryRows, totals.categoryTotal);
       showToast("Switched to " + next + " mode.");
     });
   }
@@ -1843,6 +2566,7 @@
 
   function init() {
     populateMonthFilter();
+    initChartControls();
     render();
     initSidebar();
     initThemeToggle();
