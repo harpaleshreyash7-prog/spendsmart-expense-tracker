@@ -127,21 +127,6 @@
     }).format(parseISODateLocal(isoDate));
   }
 
-  function isSameMonth(isoDate, refDate) {
-    const d = parseISODateLocal(isoDate);
-    return (
-      d.getFullYear() === refDate.getFullYear() &&
-      d.getMonth() === refDate.getMonth()
-    );
-  }
-
-  function getMonthLabel(refDate) {
-    return new Intl.DateTimeFormat("en-IN", {
-      month: "long",
-      year: "numeric",
-    }).format(refDate);
-  }
-
   /** Monday–Sunday bounds for the week containing refDate */
   function getWeekRange(refDate) {
     const d = new Date(refDate);
@@ -482,6 +467,8 @@
     const searchInput = document.getElementById("expenseSearch");
     const categorySelect = document.getElementById("filterCategory");
     const monthSelect = document.getElementById("filterMonth");
+    const startDateInput = document.getElementById("filterStartDate");
+    const endDateInput = document.getElementById("filterEndDate");
     const sortSelect = document.getElementById("filterSort");
 
     return {
@@ -494,6 +481,8 @@
         monthSelect && monthSelect.value
           ? monthSelect.value
           : "all",
+      startDate: startDateInput ? startDateInput.value : "",
+      endDate: endDateInput ? endDateInput.value : "",
       sort:
         sortSelect && sortSelect.value
           ? sortSelect.value
@@ -523,6 +512,9 @@
           return false;
         }
       }
+
+      if (f.startDate && expense.date < f.startDate) return false;
+      if (f.endDate && expense.date > f.endDate) return false;
 
       return true;
     });
@@ -851,7 +843,9 @@
     const isFiltered = Boolean(
       filters.search ||
       (filters.category && filters.category !== "all") ||
-      (filters.month && filters.month !== "all")
+      (filters.month && filters.month !== "all") ||
+      filters.startDate ||
+      filters.endDate
     );
 
     tbody.replaceChildren();
@@ -876,7 +870,9 @@
       empty.hidden = false;
       if (emptyTitle) emptyTitle.textContent = "No matching expenses";
       if (emptyText) {
-        if (filters.search && filters.category !== "all" && filters.month !== "all") {
+        if (filters.startDate || filters.endDate) {
+          emptyText.textContent = "No expenses found in the selected date range.";
+        } else if (filters.search && filters.category !== "all" && filters.month !== "all") {
           emptyText.textContent =
             'No expenses match "' +
             filters.search +
@@ -948,7 +944,6 @@
     return {
       isDark: isDark,
       text: isDark ? "#9ca3af" : "#64748b",
-      textBold: isDark ? "#f9fafb" : "#0f1729",
       grid: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 41, 0.06)",
       tooltipBg: isDark ? "#1f2937" : "#0f1729",
       tooltipText: isDark ? "#f9fafb" : "#ffffff",
@@ -2276,6 +2271,8 @@
     const clearSearchBtn = document.getElementById("clearSearchBtn");
     const categorySelect = document.getElementById("filterCategory");
     const monthSelect = document.getElementById("filterMonth");
+    const startDateInput = document.getElementById("filterStartDate");
+    const endDateInput = document.getElementById("filterEndDate");
     const sortSelect = document.getElementById("filterSort");
     const clearFiltersBtn = document.getElementById("clearFiltersBtn");
     const emptyClearFiltersBtn = document.getElementById("emptyClearFiltersBtn");
@@ -2312,6 +2309,26 @@
       });
     }
 
+    function handleDateRangeChange() {
+      const startDate = startDateInput ? startDateInput.value : "";
+      const endDate = endDateInput ? endDateInput.value : "";
+      const invalidRange = startDate && endDate && startDate > endDate;
+      if (endDateInput) {
+        endDateInput.setCustomValidity(
+          invalidRange ? "The end date must be on or after the start date." : ""
+        );
+      }
+      if (invalidRange) {
+        if (endDateInput) endDateInput.reportValidity();
+        showToast("Choose an end date on or after the start date.", "error");
+        return;
+      }
+      render();
+    }
+
+    if (startDateInput) startDateInput.addEventListener("change", handleDateRangeChange);
+    if (endDateInput) endDateInput.addEventListener("change", handleDateRangeChange);
+
     if (sortSelect) {
       sortSelect.addEventListener("change", function () {
         renderExpenses();
@@ -2323,6 +2340,11 @@
       if (clearSearchBtn) clearSearchBtn.hidden = true;
       if (categorySelect) categorySelect.value = "all";
       if (monthSelect) monthSelect.value = "all";
+      if (startDateInput) startDateInput.value = "";
+      if (endDateInput) {
+        endDateInput.value = "";
+        endDateInput.setCustomValidity("");
+      }
       render();
       showToast("Filters reset.");
     }
@@ -2556,12 +2578,57 @@
     });
   }
 
-  function initPlaceholders() {
-    document.querySelectorAll(".nav-link--placeholder, .link--placeholder").forEach(function (link) {
-      link.addEventListener("click", function (e) {
-        e.preventDefault();
-      });
+  function escapeCsvValue(value) {
+    let text = String(value == null ? "" : value);
+    // Prevent spreadsheet apps from treating a user-entered title or note as a formula.
+    if (/^[=+\-@]/.test(text)) text = "'" + text;
+    return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+
+  function exportFilteredExpenses() {
+    const filters = getActiveFilters();
+    const list = getSortedExpenses(getFilteredExpenses(filters), filters.sort);
+    if (list.length === 0) {
+      showToast("There are no matching expenses to export.", "error");
+      return;
+    }
+
+    const rows = [["Date", "Title", "Category", "Amount (INR)", "Description"]];
+    list.forEach(function (expense) {
+      rows.push([
+        expense.date,
+        expense.title,
+        expense.category,
+        expense.amount.toFixed(2),
+        expense.notes || "",
+      ]);
     });
+
+    const csv = "\uFEFF" + rows.map(function (row) {
+      return row.map(escapeCsvValue).join(",");
+    }).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "spendsmart-expenses-" + todayISO() + ".csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 0);
+    showToast(list.length + " expense" + (list.length === 1 ? "" : "s") + " exported as CSV.");
+  }
+
+  function initUtilityControls() {
+    const exportBtn = document.getElementById("exportCsvBtn");
+    const notificationsBtn = document.getElementById("notificationsBtn");
+    if (exportBtn) exportBtn.addEventListener("click", exportFilteredExpenses);
+    if (notificationsBtn) {
+      notificationsBtn.addEventListener("click", function () {
+        showToast("You're all caught up — no new notifications.");
+      });
+    }
   }
 
   function init() {
@@ -2576,7 +2643,7 @@
     initTransactionActions();
     initConfirmDialog();
     initGlobalKeys();
-    initPlaceholders();
+    initUtilityControls();
   }
 
   if (document.readyState === "loading") {

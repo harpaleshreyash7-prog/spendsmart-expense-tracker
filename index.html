@@ -58,7 +58,7 @@
         <nav class="sidebar__nav">
           <ul class="nav-list">
             <li>
-              <a href="#" class="nav-link nav-link--active" aria-current="page">
+              <a href="#mainContent" class="nav-link nav-link--active" aria-current="page">
                 <span class="nav-link__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -71,7 +71,7 @@
               </a>
             </li>
             <li>
-              <a href="#" class="nav-link nav-link--placeholder">
+              <a href="#recentTransactions" class="nav-link">
                 <span class="nav-link__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M4 6h16M4 12h16M4 18h10" />
@@ -81,7 +81,7 @@
               </a>
             </li>
             <li>
-              <a href="#" class="nav-link nav-link--placeholder">
+              <a href="#budgetProgress" class="nav-link">
                 <span class="nav-link__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -91,7 +91,7 @@
               </a>
             </li>
             <li>
-              <a href="#" class="nav-link nav-link--placeholder">
+              <a href="#spendingOverview" class="nav-link">
                 <span class="nav-link__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 3v18h18M7 16l4-4 4 4 5-6" />
@@ -101,7 +101,7 @@
               </a>
             </li>
             <li>
-              <a href="#" class="nav-link nav-link--placeholder">
+              <a href="#budgetProgress" class="nav-link">
                 <span class="nav-link__icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="3" />
@@ -166,8 +166,9 @@
             <button
               type="button"
               class="icon-btn"
-              aria-label="Notifications (coming soon)"
-              disabled
+              id="notificationsBtn"
+              aria-label="Show notifications"
+              title="Show notifications"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -298,7 +299,7 @@
 
           <div class="dashboard-grid">
             <!-- Spending trends chart -->
-            <section class="card chart-card" aria-labelledby="spending-overview-title">
+            <section class="card chart-card" id="spendingOverview" aria-labelledby="spending-overview-title">
               <div class="card-header chart-card__header">
                 <div>
                   <h2 class="card-title" id="spending-overview-title">Spending Trends</h2>
@@ -368,7 +369,7 @@
             </section>
 
             <!-- Budget progress -->
-            <section class="card budget-card" aria-labelledby="budget-progress-title">
+            <section class="card budget-card" id="budgetProgress" aria-labelledby="budget-progress-title">
               <h2 class="card-title" id="budget-progress-title">Budget Progress</h2>
               <p class="card-subtitle" id="budgetMonthLabel">—</p>
 
@@ -442,13 +443,13 @@
 
           <div class="dashboard-grid dashboard-grid--wide">
             <!-- Recent transactions -->
-            <section class="card transactions-card" aria-labelledby="recent-transactions-title">
+            <section class="card transactions-card" id="recentTransactions" aria-labelledby="recent-transactions-title">
               <div class="card-header">
                 <div>
                   <h2 class="card-title" id="recent-transactions-title">Recent Transactions</h2>
                   <p class="card-subtitle" id="transactionsSubtitle">Your latest expenses</p>
                 </div>
-                <a href="#" class="link link--placeholder">View all</a>
+                <button type="button" class="link link--button" id="exportCsvBtn">Export CSV</button>
               </div>
 
               <div class="expense-toolbar" id="expenseToolbar">
@@ -499,6 +500,16 @@
                     <select class="field__input field__select toolbar-select" id="filterMonth">
                       <option value="all">All Months</option>
                     </select>
+                  </div>
+
+                  <div class="toolbar-field toolbar-field--date">
+                    <label class="toolbar-field__label" for="filterStartDate">From date</label>
+                    <input class="field__input toolbar-select" type="date" id="filterStartDate" />
+                  </div>
+
+                  <div class="toolbar-field toolbar-field--date">
+                    <label class="toolbar-field__label" for="filterEndDate">To date</label>
+                    <input class="field__input toolbar-select" type="date" id="filterEndDate" />
                   </div>
 
                   <div class="toolbar-field">

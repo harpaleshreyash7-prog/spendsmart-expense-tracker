@@ -30,7 +30,7 @@ spendsmart-expense-tracker/
 
 ## Key Features
 
-### Day 4: Persistence & Dynamic Budget Management
+### Dashboard, Analytics & Data Management
 - **`localStorage` Persistence**: Expenses and monthly budget are automatically serialized via `JSON.stringify()` and deserialized with `JSON.parse()`. All changes persist across page reloads and browser sessions.
 - **Dynamic Monthly Budget Editor**: Users can update their monthly budget limit directly from the dashboard with live form validation (preventing negative, zero, non-numeric, or blank amounts).
 - **Instant Reactive Updates**: Whenever transactions or the monthly budget change, the entire dashboard immediately recalculates:
@@ -47,15 +47,36 @@ spendsmart-expense-tracker/
   - A doughnut chart and category breakdown show how spending is distributed by category.
   - A monthly spending chart supports bar and line views, plus a weekly daily-spend view.
   - Chart tooltips show formatted INR totals and category shares.
-  - Search, category, and month filters update the transaction list, doughnut chart, trend chart, category totals, and insights together.
+  - Search, category, month, and optional date-range filters update the transaction list, doughnut chart, trend chart, category totals, and insights together.
   - Insights identify the highest-spending category, average and largest transaction, month-over-month movement, daily pace, and budget-based recommendations.
+- **CSV Export**: Download the currently filtered and sorted transactions as a spreadsheet-safe UTF-8 CSV with date, title, category, INR amount, and description columns.
+- **Useful Navigation**: Sidebar links smoothly jump to the overview, expenses, budget settings, and reports. The notification control gives clear feedback instead of acting as a dead button.
 
-### Day 1–3 Core Features Preserved
+### Core Expense Tracking
 - **Complete Expense CRUD**: Add, edit, and delete transactions using accessible dialogs and validation.
-- **Real-time Search & Filters**: Instant search by title, category filtering (Food, Transport, Shopping, Education, Entertainment, Bills, Health, Other), and dynamic month filter.
+- **Real-time Search & Filters**: Instant search by title, category filtering (Food, Transport, Shopping, Education, Entertainment, Bills, Health, Other), dynamic month filtering, and custom from/to dates with invalid-range feedback.
 - **Multi-criteria Sorting**: Sort by Newest, Oldest, Amount (High to Low / Low to High), and Title (A–Z / Z–A).
 - **Responsive Dashboard**: Cards, filters, charts, transaction views, and the sidebar adapt for desktop, tablet, and mobile. On mobile, the sidebar becomes a drawer and transactions switch from a table to touch-friendly cards.
-- **Mobile Responsive**: Responsive layout with sidebar drawer, adaptive table-to-list transaction views, and touch-friendly controls.
+
+---
+
+## Usage Guide
+
+1. Select **Add Expense** to record a transaction. Required fields show inline validation messages.
+2. Use search, category, month, and date filters to focus the dashboard; choose a sort order to organize the transaction list.
+3. Select **Export CSV** to download exactly the filtered transactions currently shown.
+4. Update the monthly budget to see remaining funds, progress, budget status, and tailored spending insights recalculate immediately.
+5. Switch between monthly/weekly and bar/line chart views. Use the top-right sun/moon control to change the saved color theme.
+
+---
+
+## Screenshots
+
+Commit the included screenshot files to show the dashboard in your GitHub repository:
+
+![SpendSmart dashboard](screenshot_full.png)
+
+![SpendSmart light theme](screenshot_light.png)
 
 ---
 
@@ -79,7 +100,7 @@ Then visit `http://localhost:8080` in your web browser.
 
 ---
 
-## How to Test Day 4 Requirements (Manual Testing Guide)
+## Testing Checklist
 
 Follow these steps to verify all Day 4 capabilities:
 
@@ -140,6 +161,25 @@ Follow these steps to verify all Day 4 capabilities:
 2. Confirm the transaction list, doughnut chart, category totals, highest-category card, and trend chart all reflect the matching transactions.
 3. Change the month filter and repeat to confirm the dashboard uses that month’s data.
 4. Use the **Monthly / Weekly** and **Bar / Line** controls above Spending Trends to change the trend view.
+
+### 9. Test Date Filters and CSV Export
+1. Set a **From date** and **To date** around a known transaction. Confirm the table and analytics update together.
+2. Try an end date earlier than the start date. The form should prevent the invalid range and explain the problem.
+3. Click **Export CSV** and open the downloaded file. Confirm it has the columns `Date`, `Title`, `Category`, `Amount (INR)`, and `Description`, and only contains the visible filtered results.
+
+---
+
+## Deploy on GitHub Pages
+
+This is a static application with relative asset paths, so it is compatible with GitHub Pages without a build step.
+
+1. Push the project to a GitHub repository, including `index.html`, `css/`, `js/`, and optional screenshots.
+2. On GitHub, open **Settings → Pages**.
+3. Under **Build and deployment**, choose **Deploy from a branch**.
+4. Select the `main` branch and the `/(root)` folder, then click **Save**.
+5. GitHub will publish the site at `https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/` within a few minutes.
+
+Because all paths are relative (`css/style.css` and `js/script.js`), the app works both at a custom domain and under the repository URL used by GitHub Pages.
 
 ---
 
